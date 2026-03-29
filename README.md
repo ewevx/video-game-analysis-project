@@ -1,3 +1,6 @@
+# Streamlit app
+https://video-game-analysis-project-f9dbovjaegc97cg3tuhvxp.streamlit.app/#xbox-one-vs-pc-user-score
+
 # Projeto Integrado 6
 
 Este repositório contém um projeto de análise de dados em Python com foco em um conjunto de dados de jogos.
