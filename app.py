@@ -81,7 +81,7 @@ df_filtrado = df[
 # -------------------------------------------------
 # TÍTULO
 # -------------------------------------------------
-st.title("🎮 Dashboard Executivo — Mercado Global de Jogos Digitais")
+st.title("🎮 Mercado Global de Jogos Digitais")
 st.caption("Análise estratégica de desempenho de mercado, plataformas e comportamento de vendas.")
 
 st.divider()
