@@ -7,10 +7,27 @@ import scipy.stats as stats
 # CONFIGURAÇÃO DA PÁGINA
 # -------------------------------------------------
 st.set_page_config(
-    page_title="Análise do Mercado de Jogos Digitais",
-    layout="wide",
-    initial_sidebar_state="expanded"
+    page_title="Dashboard - Mercado de Jogos",
+    layout="wide"
 )
+
+# -------------------------------------------------
+# ESTILO VISUAL (POWER BI STYLE)
+# -------------------------------------------------
+st.markdown("""
+    <style>
+    .main {
+        background-color: #f8f9fa;
+    }
+    div[data-testid="metric-container"] {
+        background-color: white;
+        padding: 15px;
+        border-radius: 10px;
+        border: 1px solid #e6e6e6;
+        box-shadow: 0px 1px 3px rgba(0,0,0,0.05);
+    }
+    </style>
+""", unsafe_allow_html=True)
 
 # -------------------------------------------------
 # CARREGAMENTO DOS DADOS
@@ -19,19 +36,17 @@ st.set_page_config(
 def carregar_dados():
     df = pd.read_csv("games.csv")
     df.columns = df.columns.str.lower()
-    
+
     df['user_score'] = pd.to_numeric(df['user_score'], errors='coerce')
     df['critic_score'] = pd.to_numeric(df['critic_score'], errors='coerce')
-    
+
     df['total_sales'] = (
         df['na_sales'] +
         df['eu_sales'] +
         df['jp_sales'] +
         df['other_sales']
     )
-    
-    df = df.dropna(subset=['name', 'genre'])
-    
+
     return df
 
 df = carregar_dados()
@@ -39,157 +54,184 @@ df = carregar_dados()
 # -------------------------------------------------
 # SIDEBAR - FILTROS
 # -------------------------------------------------
-st.sidebar.title("Filtros")
+st.sidebar.title("Filtros do Dashboard")
 
 ano_min = int(df['year_of_release'].min())
 ano_max = int(df['year_of_release'].max())
 
-intervalo_anos = st.sidebar.slider(
-    "Selecione o período:",
+intervalo = st.sidebar.slider(
+    "Período de análise:",
     ano_min,
     ano_max,
     (2010, 2016)
 )
 
+plataformas = st.sidebar.multiselect(
+    "Selecione plataformas:",
+    df['platform'].unique(),
+    default=df['platform'].unique()
+)
+
 df_filtrado = df[
-    (df['year_of_release'] >= intervalo_anos[0]) &
-    (df['year_of_release'] <= intervalo_anos[1])
+    (df['year_of_release'] >= intervalo[0]) &
+    (df['year_of_release'] <= intervalo[1]) &
+    (df['platform'].isin(plataformas))
 ]
 
 # -------------------------------------------------
-# TÍTULO PRINCIPAL
+# TÍTULO
 # -------------------------------------------------
-st.title("🎮 Análise do Mercado Global de Jogos Digitais")
-
-st.markdown("""
-Este projeto apresenta uma análise exploratória do mercado global de jogos digitais,
-com foco na evolução temporal, desempenho por plataforma e diferenças estatísticas
-entre grupos.
-""")
+st.title("🎮 Dashboard Executivo — Mercado Global de Jogos Digitais")
+st.caption("Análise estratégica de desempenho de mercado, plataformas e comportamento de vendas.")
 
 st.divider()
 
 # -------------------------------------------------
-# MÉTRICAS PRINCIPAIS
+# KPIs PRINCIPAIS
 # -------------------------------------------------
-col1, col2, col3 = st.columns(3)
+col1, col2, col3, col4 = st.columns(4)
 
-col1.metric("Total de Jogos", len(df_filtrado))
-col2.metric("Vendas Totais (milhões)", round(df_filtrado['total_sales'].sum(), 2))
-col3.metric("Número de Plataformas", df_filtrado['platform'].nunique())
+col1.metric("Total de Jogos", f"{len(df_filtrado):,}")
+col2.metric("Vendas Totais (Mi)", f"{df_filtrado['total_sales'].sum():,.2f}")
+col3.metric("Plataformas Ativas", df_filtrado['platform'].nunique())
+col4.metric("Média Nota Usuário", f"{df_filtrado['user_score'].mean():.2f}")
 
 st.divider()
 
 # -------------------------------------------------
-# ABAS
+# GRÁFICOS PRINCIPAIS
 # -------------------------------------------------
-aba1, aba2, aba3 = st.tabs([
-    "📈 Evolução do Mercado",
-    "🎮 Análise por Plataforma",
-    "🧪 Testes de Hipótese"
-])
+col_graf1, col_graf2 = st.columns(2)
 
-# -------------------------------------------------
-# ABA 1 - EVOLUÇÃO DO MERCADO
-# -------------------------------------------------
-with aba1:
-    jogos_por_ano = (
-        df_filtrado.groupby('year_of_release')['name']
-        .count()
+with col_graf1:
+    vendas_ano = (
+        df_filtrado.groupby('year_of_release')['total_sales']
+        .sum()
         .reset_index()
     )
 
     fig1 = px.line(
-        jogos_por_ano,
-        x='year_of_release',
-        y='name',
+        vendas_ano,
+        x="year_of_release",
+        y="total_sales",
         markers=True,
-        title="Quantidade de Jogos Lançados por Ano",
+        title="Evolução das Vendas Globais",
         labels={
-            "year_of_release": "Ano de Lançamento",
-            "name": "Quantidade de Jogos"
+            "year_of_release": "Ano",
+            "total_sales": "Vendas Totais (milhões)"
         }
     )
 
+    fig1.update_layout(template="plotly_white")
     st.plotly_chart(fig1, use_container_width=True)
 
-    st.markdown("""
-    **Interpretação:**  
-    O gráfico evidencia ciclos de crescimento e retração no mercado,
-    possivelmente relacionados ao lançamento de novas gerações de consoles
-    e mudanças na demanda dos consumidores.
-    """)
-
-# -------------------------------------------------
-# ABA 2 - ANÁLISE POR PLATAFORMA
-# -------------------------------------------------
-with aba2:
-    plataforma = st.selectbox(
-        "Selecione a plataforma:",
-        df_filtrado['platform'].unique()
+with col_graf2:
+    vendas_plataforma = (
+        df_filtrado.groupby('platform')['total_sales']
+        .sum()
+        .sort_values(ascending=False)
+        .reset_index()
     )
 
-    df_plataforma = df_filtrado[df_filtrado['platform'] == plataforma]
+    fig2 = px.bar(
+        vendas_plataforma,
+        x="platform",
+        y="total_sales",
+        title="Vendas Totais por Plataforma",
+        labels={
+            "platform": "Plataforma",
+            "total_sales": "Vendas Totais (milhões)"
+        }
+    )
 
-    col1, col2 = st.columns(2)
+    fig2.update_layout(template="plotly_white")
+    st.plotly_chart(fig2, use_container_width=True)
 
-    with col1:
-        vendas_genero = (
-            df_plataforma.groupby('genre')['total_sales']
-            .sum()
-            .sort_values(ascending=False)
-            .reset_index()
-        )
-
-        fig2 = px.bar(
-            vendas_genero,
-            x='genre',
-            y='total_sales',
-            title=f"Vendas por Gênero - {plataforma}",
-            labels={
-                "genre": "Gênero",
-                "total_sales": "Vendas Totais (milhões)"
-            }
-        )
-
-        st.plotly_chart(fig2, use_container_width=True)
-
-    with col2:
-        fig3 = px.scatter(
-            df_plataforma,
-            x="critic_score",
-            y="total_sales",
-            trendline="ols",
-            title="Relação entre Nota da Crítica e Vendas",
-            labels={
-                "critic_score": "Nota da Crítica",
-                "total_sales": "Vendas Totais (milhões)"
-            }
-        )
-
-        st.plotly_chart(fig3, use_container_width=True)
+st.divider()
 
 # -------------------------------------------------
-# ABA 3 - TESTES DE HIPÓTESE
+# ANÁLISE DETALHADA
 # -------------------------------------------------
-with aba3:
-    st.subheader("Comparação de Nota dos Usuários: Xbox One vs PC")
+col3, col4 = st.columns(2)
 
-    xbox = df_filtrado[df_filtrado['platform'] == 'XOne']['user_score'].dropna()
-    pc = df_filtrado[df_filtrado['platform'] == 'PC']['user_score'].dropna()
+with col3:
+    vendas_genero = (
+        df_filtrado.groupby('genre')['total_sales']
+        .sum()
+        .sort_values(ascending=False)
+        .reset_index()
+    )
 
+    fig3 = px.bar(
+        vendas_genero,
+        x="genre",
+        y="total_sales",
+        title="Desempenho por Gênero",
+        labels={
+            "genre": "Gênero",
+            "total_sales": "Vendas Totais (milhões)"
+        }
+    )
+
+    fig3.update_layout(template="plotly_white")
+    st.plotly_chart(fig3, use_container_width=True)
+
+with col4:
+    fig4 = px.scatter(
+        df_filtrado,
+        x="critic_score",
+        y="total_sales",
+        trendline="ols",
+        title="Relação entre Nota da Crítica e Vendas",
+        labels={
+            "critic_score": "Nota da Crítica",
+            "total_sales": "Vendas Totais (milhões)"
+        }
+    )
+
+    fig4.update_layout(template="plotly_white")
+    st.plotly_chart(fig4, use_container_width=True)
+
+st.divider()
+
+# -------------------------------------------------
+# TESTE DE HIPÓTESE
+# -------------------------------------------------
+st.subheader("🧪 Teste Estatístico — Xbox One vs PC")
+
+xbox = df_filtrado[df_filtrado['platform'] == 'XOne']['user_score'].dropna()
+pc = df_filtrado[df_filtrado['platform'] == 'PC']['user_score'].dropna()
+
+if len(xbox) > 0 and len(pc) > 0:
     t_stat, p_val = stats.ttest_ind(xbox, pc, equal_var=False)
 
-    st.write(f"Estatística t: {round(t_stat, 2)}")
-    st.write(f"Valor-p: {round(p_val, 4)}")
+    colA, colB = st.columns(2)
+
+    colA.metric("Estatística t", f"{t_stat:.2f}")
+    colB.metric("Valor-p", f"{p_val:.4f}")
 
     if p_val < 0.05:
-        st.success("Existe diferença estatisticamente significativa entre as médias.")
+        st.success("Há diferença estatisticamente significativa entre as médias.")
     else:
-        st.info("Não há evidência suficiente para afirmar diferença significativa.")
+        st.info("Não há evidência suficiente para diferença significativa.")
+else:
+    st.warning("Dados insuficientes para realizar o teste no período selecionado.")
 
-    st.markdown("""
-    **Interpretação Estatística:**  
-    Considerando um nível de significância de 5%, avaliamos se as médias das
-    notas atribuídas pelos usuários diferem entre as plataformas Xbox One e PC.
-    """)
+st.divider()
+
+# -------------------------------------------------
+# CONCLUSÃO EXECUTIVA
+# -------------------------------------------------
+st.markdown("""
+### 📌 Conclusão Estratégica
+
+O dashboard permite identificar:
+
+- Tendências de crescimento ou retração do mercado
+- Plataformas com maior participação em vendas
+- Gêneros mais rentáveis
+- Relação entre avaliação crítica e desempenho comercial
+
+Essas informações podem orientar decisões estratégicas de investimento,
+lançamento e posicionamento de produtos no mercado de jogos digitais.
+""")
