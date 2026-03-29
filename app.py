@@ -3,165 +3,163 @@ import pandas as pd
 import plotly.express as px
 import scipy.stats as stats
 
-st.set_page_config(page_title="Análise de Mercado de Games", layout="wide")
+# ------------------------------------------------
+# CONFIGURAÇÃO DA PÁGINA
+# ------------------------------------------------
+st.set_page_config(
+    page_title="Game Market Analysis",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
 
-# ==========================
+# ------------------------------------------------
 # CARREGAMENTO DOS DADOS
-# ==========================
-
+# ------------------------------------------------
 @st.cache_data
 def load_data():
     df = pd.read_csv("games.csv")
     df.columns = df.columns.str.lower()
     df['user_score'] = pd.to_numeric(df['user_score'], errors='coerce')
-    df['year_of_release'] = df['year_of_release'].fillna(df['year_of_release'].median())
-    df = df.dropna(subset=['name', 'genre'])
-    
     df['total_sales'] = (
         df['na_sales'] +
         df['eu_sales'] +
         df['jp_sales'] +
         df['other_sales']
     )
-    
     return df
 
-games_data = load_data()
+df = load_data()
 
-# ==========================
-# SIDEBAR
-# ==========================
+# ------------------------------------------------
+# SIDEBAR - FILTROS GLOBAIS
+# ------------------------------------------------
+st.sidebar.title("Filtros")
 
-st.sidebar.title("Navegação")
-page = st.sidebar.radio(
-    "Ir para:",
-    [
-        "Visão Geral",
-        "Evolução do Mercado",
-        "Análise por Plataforma",
-        "Análise Regional",
-        "Testes de Hipótese"
-    ]
+year_range = st.sidebar.slider(
+    "Selecione o período:",
+    int(df['year_of_release'].min()),
+    int(df['year_of_release'].max()),
+    (2010, 2016)
 )
 
-# ==========================
-# PÁGINA 1
-# ==========================
+filtered_df = df[
+    (df['year_of_release'] >= year_range[0]) &
+    (df['year_of_release'] <= year_range[1])
+]
 
-if page == "Visão Geral":
-    st.title("Análise do Mercado de Jogos Digitais")
-    
-    st.markdown("""
-    Projeto de análise exploratória com foco em:
-    - Evolução do mercado
-    - Performance por plataforma
-    - Diferenças regionais
-    - Testes estatísticos de hipóteses
-    """)
+# ------------------------------------------------
+# HEADER
+# ------------------------------------------------
+st.title("🎮 Video Game Market Analysis")
+st.markdown(
+    """
+    Análise exploratória do mercado global de jogos digitais.
+    O objetivo é identificar tendências, desempenho por plataforma
+    e diferenças regionais.
+    """
+)
 
-    st.metric("Total de Jogos", len(games_data))
-    st.metric("Período Analisado",
-              f"{int(games_data['year_of_release'].min())} - {int(games_data['year_of_release'].max())}")
+st.divider()
 
-# ==========================
-# PÁGINA 2
-# ==========================
+# ------------------------------------------------
+# MÉTRICAS PRINCIPAIS
+# ------------------------------------------------
+col1, col2, col3 = st.columns(3)
 
-elif page == "Evolução do Mercado":
-    st.title("Evolução do Mercado ao Longo do Tempo")
+col1.metric("Total Games", len(filtered_df))
+col2.metric("Total Sales (M)", round(filtered_df['total_sales'].sum(), 2))
+col3.metric("Platforms", filtered_df['platform'].nunique())
 
-    games_per_year = games_data.groupby('year_of_release')['name'].count().reset_index()
+st.divider()
+
+# ------------------------------------------------
+# TABS DE ANÁLISE
+# ------------------------------------------------
+tab1, tab2, tab3 = st.tabs([
+    "📈 Market Evolution",
+    "🎮 Platform Analysis",
+    "🧪 Hypothesis Testing"
+])
+
+# ------------------------------------------------
+# TAB 1
+# ------------------------------------------------
+with tab1:
+    games_per_year = (
+        filtered_df.groupby('year_of_release')['name']
+        .count()
+        .reset_index()
+    )
 
     fig = px.line(
         games_per_year,
-        x="year_of_release",
-        y="name",
-        title="Quantidade de Jogos Lançados por Ano"
+        x='year_of_release',
+        y='name',
+        markers=True,
+        title="Games Released per Year"
     )
 
     st.plotly_chart(fig, use_container_width=True)
 
-# ==========================
-# PÁGINA 3
-# ==========================
+    st.markdown("""
+    **Insight:**  
+    Observe periods of growth and decline in game releases.
+    This may reflect console cycles and market saturation.
+    """)
 
-elif page == "Análise por Plataforma":
-    st.title("Análise por Plataforma")
-
+# ------------------------------------------------
+# TAB 2
+# ------------------------------------------------
+with tab2:
     platform = st.selectbox(
-        "Selecione a plataforma:",
-        games_data['platform'].unique()
+        "Select platform:",
+        filtered_df['platform'].unique()
     )
 
-    platform_data = games_data[games_data['platform'] == platform]
+    platform_df = filtered_df[filtered_df['platform'] == platform]
 
-    st.metric("Vendas Totais (milhões)",
-              round(platform_data['total_sales'].sum(), 2))
+    col1, col2 = st.columns(2)
 
-    fig = px.scatter(
-        platform_data,
-        x="critic_score",
-        y="total_sales",
-        title=f"Correlação entre Critic Score e Vendas - {platform}"
-    )
+    with col1:
+        fig_sales = px.bar(
+            platform_df.groupby('genre')['total_sales']
+            .sum()
+            .sort_values(ascending=False),
+            title=f"{platform} Sales by Genre"
+        )
+        st.plotly_chart(fig_sales, use_container_width=True)
 
-    st.plotly_chart(fig, use_container_width=True)
+    with col2:
+        fig_corr = px.scatter(
+            platform_df,
+            x="critic_score",
+            y="total_sales",
+            title="Critic Score vs Sales",
+            trendline="ols"
+        )
+        st.plotly_chart(fig_corr, use_container_width=True)
 
-# ==========================
-# PÁGINA 4
-# ==========================
-
-elif page == "Análise Regional":
-    st.title("Análise Regional de Vendas")
-
-    region = st.selectbox(
-        "Selecione a região:",
-        ["na_sales", "eu_sales", "jp_sales"]
-    )
-
-    sales_by_genre = games_data.groupby('genre')[region].sum().sort_values(ascending=False)
-
-    fig = px.bar(
-        x=sales_by_genre.index,
-        y=sales_by_genre.values,
-        title=f"Vendas por Gênero - {region.upper()}"
-    )
-
-    st.plotly_chart(fig, use_container_width=True)
-
-# ==========================
-# PÁGINA 5
-# ==========================
-
-elif page == "Testes de Hipótese":
-    st.title("Testes Estatísticos")
-
+# ------------------------------------------------
+# TAB 3
+# ------------------------------------------------
+with tab3:
     st.subheader("Xbox One vs PC - User Score")
 
-    xbox_score = games_data[games_data['platform'] == 'XOne']['user_score'].dropna()
-    pc_score = games_data[games_data['platform'] == 'PC']['user_score'].dropna()
+    xbox = filtered_df[filtered_df['platform'] == 'XOne']['user_score'].dropna()
+    pc = filtered_df[filtered_df['platform'] == 'PC']['user_score'].dropna()
 
-    t_stat, p_val = stats.ttest_ind(xbox_score, pc_score, equal_var=False)
+    t_stat, p_val = stats.ttest_ind(xbox, pc, equal_var=False)
 
     st.write(f"T-statistic: {round(t_stat, 2)}")
     st.write(f"P-value: {round(p_val, 4)}")
 
     if p_val < 0.05:
-        st.success("Há diferença estatisticamente significativa.")
+        st.success("Statistically significant difference detected.")
     else:
-        st.info("Não há evidência suficiente para diferença significativa.")
+        st.info("No statistically significant difference detected.")
 
-    st.subheader("Action vs Sports - User Score")
-
-    action = games_data[games_data['genre'] == 'Action']['user_score'].dropna()
-    sports = games_data[games_data['genre'] == 'Sports']['user_score'].dropna()
-
-    t_stat_g, p_val_g = stats.ttest_ind(action, sports, equal_var=False)
-
-    st.write(f"T-statistic: {round(t_stat_g, 2)}")
-    st.write(f"P-value: {round(p_val_g, 4)}")
-
-    if p_val_g < 0.05:
-        st.success("Há diferença estatisticamente significativa.")
-    else:
-        st.info("Não há evidência suficiente para diferença significativa.")
+    st.markdown("""
+    **Interpretation:**  
+    The result indicates whether user perception differs significantly
+    between platforms.
+    """)
